@@ -30,7 +30,7 @@ def create_memory() -> Memory:
         llm=LLMConfig(
             provider="gemini",
             config={
-                "model": "gemini-1.5-flash",
+                "model": "gemini-3-flash-preview",
                 "temperature": 0.1,
             }
         ),

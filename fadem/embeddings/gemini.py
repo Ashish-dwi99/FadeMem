@@ -11,7 +11,7 @@ class GeminiEmbedder(BaseEmbedder):
         if not self.api_key:
             raise ValueError("Gemini API key not provided. Set GEMINI_API_KEY or pass api_key in config.")
 
-        self.model = self.config.get("model", "text-embedding-004")
+        self.model = self.config.get("model", "gemini-embedding-001")
 
         self._client_type = None
         self._client = None

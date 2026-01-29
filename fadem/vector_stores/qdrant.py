@@ -28,8 +28,29 @@ class QdrantVectorStore(VectorStoreBase):
 
         self.client = _create_client(config)
 
-        if not self.client.collection_exists(self.collection_name):
+        if self.client.collection_exists(self.collection_name):
+            # Check if existing collection has correct dimensions
+            existing_size = self._get_collection_vector_size()
+            if existing_size is not None and existing_size != self.vector_size:
+                # Dimension mismatch - recreate collection
+                self.client.delete_collection(self.collection_name)
+                self.create_col(self.collection_name, self.vector_size, self.distance)
+        else:
             self.create_col(self.collection_name, self.vector_size, self.distance)
+
+    def _get_collection_vector_size(self) -> Optional[int]:
+        """Get the vector size of an existing collection."""
+        try:
+            info = self.client.get_collection(self.collection_name)
+            # Handle different Qdrant client versions
+            vectors_config = info.config.params.vectors
+            if hasattr(vectors_config, 'size'):
+                return vectors_config.size
+            elif isinstance(vectors_config, dict) and '' in vectors_config:
+                return vectors_config[''].size
+            return None
+        except Exception:
+            return None
 
     def create_col(self, name: str, vector_size: int, distance: str = "cosine") -> None:
         from qdrant_client.models import Distance, VectorParams
@@ -55,14 +76,15 @@ class QdrantVectorStore(VectorStoreBase):
 
     def search(self, query: Optional[str], vectors: List[float], limit: int = 5, filters: Optional[Dict[str, Any]] = None) -> List[MemoryResult]:
         qdrant_filter = _build_qdrant_filter(filters)
-        results = self.client.search(
+        # Use query_points (new API) instead of deprecated search method
+        response = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=vectors,
+            query=vectors,
             limit=limit,
             query_filter=qdrant_filter,
             with_payload=True,
         )
-        return [MemoryResult(id=str(r.id), score=float(r.score or 0.0), payload=r.payload or {}) for r in results]
+        return [MemoryResult(id=str(r.id), score=float(r.score or 0.0), payload=r.payload or {}) for r in response.points]
 
     def delete(self, vector_id: str) -> None:
         from qdrant_client.models import PointIdsList

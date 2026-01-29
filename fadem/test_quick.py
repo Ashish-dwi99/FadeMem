@@ -29,14 +29,14 @@ def test_fadem():
         llm=LLMConfig(
             provider="gemini",
             config={
-                "model": "gemini-1.5-flash",
+                "model": "gemini-2.0-flash",
                 "temperature": 0.1,
             }
         ),
         embedder=EmbedderConfig(
             provider="gemini",
             config={
-                "model": "text-embedding-004",
+                "model": "models/text-embedding-005",
             }
         ),
         history_db_path="/tmp/fadem_test_history.db",

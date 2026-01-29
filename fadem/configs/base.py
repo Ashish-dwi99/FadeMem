@@ -18,7 +18,7 @@ class LLMConfig(BaseModel):
     provider: str = Field(default="gemini")
     config: Dict[str, Any] = Field(
         default_factory=lambda: {
-            "model": "gemini-1.5-flash",
+            "model": "gemini-2.0-flash",
             "temperature": 0.1,
             "max_tokens": 1024,
         }
@@ -27,7 +27,7 @@ class LLMConfig(BaseModel):
 
 class EmbedderConfig(BaseModel):
     provider: str = Field(default="gemini")
-    config: Dict[str, Any] = Field(default_factory=lambda: {"model": "text-embedding-004"})
+    config: Dict[str, Any] = Field(default_factory=lambda: {"model": "models/text-embedding-005"})
 
 
 class GraphStoreConfig(BaseModel):
