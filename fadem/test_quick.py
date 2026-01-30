@@ -23,7 +23,7 @@ def test_fadem():
             config={
                 "path": "/tmp/fadem_test_qdrant",
                 "collection_name": "test_memories",
-                "embedding_model_dims": 768,  # Gemini text-embedding-004 dimension
+                "embedding_model_dims": 3072,  # gemini-embedding-001 dimension
             }
         ),
         llm=LLMConfig(
@@ -36,7 +36,7 @@ def test_fadem():
         embedder=EmbedderConfig(
             provider="gemini",
             config={
-                "model": "models/text-embedding-005",
+                "model": "gemini-embedding-001",
             }
         ),
         history_db_path="/tmp/fadem_test_history.db",

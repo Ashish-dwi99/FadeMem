@@ -24,19 +24,19 @@ def create_memory() -> Memory:
             config={
                 "path": os.path.expanduser("~/.fadem/qdrant"),
                 "collection_name": "agent_memories",
-                "embedding_model_dims": 768,
+                "embedding_model_dims": 3072,  # gemini-embedding-001
             }
         ),
         llm=LLMConfig(
             provider="gemini",
             config={
-                "model": "gemini-3-flash-preview",
+                "model": "gemini-2.0-flash",
                 "temperature": 0.1,
             }
         ),
         embedder=EmbedderConfig(
             provider="gemini",
-            config={"model": "text-embedding-004"}
+            config={"model": "gemini-embedding-001"}
         ),
         history_db_path=os.path.expanduser("~/.fadem/history.db"),
         fadem=FadeMemConfig(

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 from fadem.configs.base import MemoryConfig
 from fadem.core.decay import calculate_decayed_strength, should_forget, should_promote
 from fadem.core.conflict import resolve_conflict
+from fadem.core.echo import EchoProcessor, EchoDepth
 from fadem.core.fusion import fuse_memories
 from fadem.core.retrieval import composite_score
 from fadem.db.sqlite import SQLiteManager
@@ -43,6 +44,19 @@ class Memory(MemoryBase):
         self.embedder = EmbedderFactory.create(self.config.embedder.provider, self.config.embedder.config)
         self.vector_store = VectorStoreFactory.create(self.config.vector_store.provider, self.config.vector_store.config)
         self.fadem_config = self.config.fadem
+        self.echo_config = self.config.echo
+
+        # Initialize EchoMem processor
+        if self.echo_config.enable_echo:
+            self.echo_processor = EchoProcessor(
+                self.llm,
+                config={
+                    "auto_depth": self.echo_config.auto_depth,
+                    "default_depth": self.echo_config.default_depth,
+                }
+            )
+        else:
+            self.echo_processor = None
 
     @classmethod
     def from_config(cls, config_dict: Dict[str, Any]):
@@ -66,6 +80,7 @@ class Memory(MemoryBase):
         excludes: str = None,
         initial_layer: str = "auto",
         initial_strength: float = 1.0,
+        echo_depth: str = None,  # EchoMem: override echo depth (shallow/medium/deep)
         **kwargs: Any,
     ) -> Dict[str, Any]:
         processed_metadata, effective_filters = build_filters_and_metadata(
@@ -113,7 +128,29 @@ class Memory(MemoryBase):
             if app_id:
                 mem_metadata["app_id"] = app_id
 
-            embedding = self.embedder.embed(content, memory_action="add")
+            # EchoMem: Process through multi-modal echo encoding
+            echo_result = None
+            effective_strength = initial_strength
+            if self.echo_processor and self.echo_config.enable_echo:
+                depth_override = EchoDepth(echo_depth) if echo_depth else None
+                echo_result = self.echo_processor.process(content, depth=depth_override)
+                # Apply strength multiplier from echo depth
+                effective_strength = initial_strength * echo_result.strength_multiplier
+                # Add echo metadata
+                mem_metadata.update(echo_result.to_metadata())
+                # Auto-categorize if not provided
+                if not mem_categories and echo_result.category:
+                    mem_categories = [echo_result.category]
+
+            # Choose embedding: question_form (query-optimized) or raw content
+            if (
+                echo_result
+                and echo_result.question_form
+                and self.echo_config.use_question_embedding
+            ):
+                embedding = self.embedder.embed(echo_result.question_form, memory_action="add")
+            else:
+                embedding = self.embedder.embed(content, memory_action="add")
 
             # Conflict resolution against nearest memory in scope
             event = "ADD"
@@ -161,7 +198,7 @@ class Memory(MemoryBase):
                 "immutable": immutable,
                 "expiration_date": expiration_date,
                 "layer": layer,
-                "strength": initial_strength,
+                "strength": effective_strength,
                 "embedding": embedding,
             }
 
@@ -183,7 +220,8 @@ class Memory(MemoryBase):
                     "memory": content,
                     "event": event,
                     "layer": layer,
-                    "strength": initial_strength,
+                    "strength": effective_strength,
+                    "echo_depth": echo_result.echo_depth.value if echo_result else None,
                 }
             )
 
@@ -203,6 +241,7 @@ class Memory(MemoryBase):
         keyword_search: bool = False,
         min_strength: float = 0.1,
         boost_on_access: bool = True,
+        use_echo_rerank: bool = True,  # EchoMem: use echo metadata for re-ranking
         **kwargs: Any,
     ) -> Dict[str, Any]:
         _, effective_filters = build_filters_and_metadata(
@@ -216,6 +255,10 @@ class Memory(MemoryBase):
 
         query_embedding = self.embedder.embed(query, memory_action="search")
         vector_results = self.vector_store.search(query=query, vectors=query_embedding, limit=limit * 2, filters=effective_filters)
+
+        # Prepare query terms for echo-based re-ranking
+        query_lower = query.lower()
+        query_terms = set(query_lower.split())
 
         results: List[Dict[str, Any]] = []
         for vr in vector_results:
@@ -239,9 +282,24 @@ class Memory(MemoryBase):
             strength = float(memory.get("strength", 1.0))
             combined = composite_score(similarity, strength)
 
+            # EchoMem: Apply echo-based re-ranking boost
+            echo_boost = 0.0
+            metadata = memory.get("metadata", {})
+            if use_echo_rerank and self.echo_config.enable_echo:
+                echo_boost = self._calculate_echo_boost(query_lower, query_terms, metadata)
+                combined = combined * (1 + echo_boost)
+
             if boost_on_access:
                 self.db.increment_access(memory["id"])
                 self._check_promotion(memory["id"])
+                # EchoMem: Re-echo on frequent access
+                if (
+                    self.echo_processor
+                    and self.echo_config.reecho_on_access
+                    and memory.get("access_count", 0) >= self.echo_config.reecho_threshold
+                    and metadata.get("echo_depth") != "deep"
+                ):
+                    self._reecho_memory(memory["id"])
 
             results.append(
                 {
@@ -262,11 +320,64 @@ class Memory(MemoryBase):
                     "access_count": memory.get("access_count", 0),
                     "last_accessed": memory.get("last_accessed"),
                     "composite_score": combined,
+                    "echo_boost": echo_boost,
                 }
             )
 
         results.sort(key=lambda x: x["composite_score"], reverse=True)
         return {"results": results[:limit]}
+
+    def _calculate_echo_boost(
+        self, query_lower: str, query_terms: set, metadata: Dict[str, Any]
+    ) -> float:
+        """Calculate re-ranking boost based on echo metadata matches."""
+        boost = 0.0
+
+        # Keyword match boost (each matching keyword adds 0.05)
+        keywords = metadata.get("echo_keywords", [])
+        if keywords:
+            keyword_matches = sum(1 for kw in keywords if kw.lower() in query_lower)
+            boost += keyword_matches * 0.05
+
+        # Question form similarity boost (if query is similar to question_form)
+        question_form = metadata.get("echo_question_form", "")
+        if question_form:
+            q_terms = set(question_form.lower().split())
+            overlap = len(query_terms & q_terms)
+            if overlap > 0:
+                boost += min(0.15, overlap * 0.05)
+
+        # Implication match boost
+        implications = metadata.get("echo_implications", [])
+        if implications:
+            for impl in implications:
+                impl_terms = set(impl.lower().split())
+                if query_terms & impl_terms:
+                    boost += 0.03
+
+        # Cap boost at 0.3 (30% max increase)
+        return min(0.3, boost)
+
+    def _reecho_memory(self, memory_id: str) -> None:
+        """Re-process a memory through deeper echo to strengthen it."""
+        memory = self.db.get_memory(memory_id)
+        if not memory or not self.echo_processor:
+            return
+
+        try:
+            echo_result = self.echo_processor.reecho(memory)
+            metadata = memory.get("metadata", {})
+            metadata.update(echo_result.to_metadata())
+
+            # Update memory with new echo data and boosted strength
+            new_strength = min(1.0, memory.get("strength", 1.0) * 1.1)  # 10% boost
+            self.db.update_memory(memory_id, {
+                "metadata": metadata,
+                "strength": new_strength,
+            })
+            self.db.log_event(memory_id, "REECHO", old_strength=memory.get("strength"), new_strength=new_strength)
+        except Exception as e:
+            logger.warning(f"Re-echo failed for memory {memory_id}: {e}")
 
     def get(self, memory_id: str) -> Optional[Dict[str, Any]]:
         memory = self.db.get_memory(memory_id)
@@ -448,11 +559,23 @@ class Memory(MemoryBase):
         strengths = [m.get("strength", 1.0) for m in memories]
         avg_strength = sum(strengths) / len(strengths) if strengths else 0.0
 
+        # EchoMem stats
+        echo_stats = {"shallow": 0, "medium": 0, "deep": 0, "none": 0}
+        for m in memories:
+            metadata = m.get("metadata", {})
+            depth = metadata.get("echo_depth", "none")
+            if depth in echo_stats:
+                echo_stats[depth] += 1
+            else:
+                echo_stats["none"] += 1
+
         return {
             "total": len(memories),
             "sml_count": sml_count,
             "lml_count": lml_count,
             "avg_strength": round(avg_strength, 3),
+            "echo_stats": echo_stats,
+            "echo_enabled": self.echo_config.enable_echo if self.echo_config else False,
         }
 
     def promote(self, memory_id: str) -> Dict[str, Any]:

@@ -48,12 +48,12 @@ def _get_embedding_dims_for_model(model: str, provider: str) -> int:
     if model in EMBEDDING_DIMS:
         return EMBEDDING_DIMS[model]
 
-    # Default based on provider
+    # Default based on provider (using latest model defaults)
     if provider == "gemini":
-        return 768
+        return 3072  # gemini-embedding-001 default
     elif provider == "openai":
         return 1536
-    return 768
+    return 3072
 
 
 def get_memory_instance() -> Memory:
