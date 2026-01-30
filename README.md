@@ -7,7 +7,7 @@
 
 <h1 align="center">
   <br>
-  🧠 FadeMem + EchoMem
+  🧠 Engram
   <br>
 </h1>
 
@@ -16,8 +16,10 @@
 </h3>
 
 <p align="center">
+  Engram combines three powerful memory systems:<br>
   <b>FadeMem</b> brings human-like forgetting & consolidation.<br>
   <b>EchoMem</b> adds multi-modal encoding for stronger retention.<br>
+  <b>CategoryMem</b> provides dynamic hierarchical organization.<br>
   Together, they create the most advanced memory system for AI agents.
 </p>
 
@@ -26,17 +28,16 @@
   <a href="#-quick-start">Quick Start</a> •
   <a href="#-how-it-works">How It Works</a> •
   <a href="#-claude-code-integration">Claude Code</a> •
-  <a href="#-api-reference">API</a> •
-  <a href="#-research">Research</a>
+  <a href="#-api-reference">API</a>
 </p>
 
 ---
 
-## 🎯 Why FadeMem + EchoMem?
+## 🎯 Why Engram?
 
 Traditional AI memory systems store everything forever. Humans don't work that way—and neither should your AI agents.
 
-| Problem | FadeMem + EchoMem Solution |
+| Problem | Engram Solution |
 |---------|---------------------------|
 | Memory bloat over time | **Adaptive forgetting** - irrelevant memories fade naturally |
 | All memories treated equal | **Dual-layer system** - important memories get promoted to long-term |
@@ -113,6 +114,89 @@ Input: "User prefers TypeScript over JavaScript"
 | **Medium** | Preferences, dates | + Paraphrase | 1.3x |
 | **Deep** | Credentials, "important", numbers | + Implications, Q&A | 1.6x |
 
+### 📂 CategoryMem — Dynamic Organization
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      CategoryMem Layer                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  preferences/                 facts/                             │
+│  ├── coding/                  ├── projects/                      │
+│  │   ├── languages (3)        │   └── repos (5)                  │
+│  │   └── tools (2)            └── knowledge (8)                  │
+│  └── lifestyle (4)                                               │
+│                                                                  │
+│  context/                     corrections/                       │
+│  └── work (6)                 └── learned_lessons (2)            │
+│                                                                  │
+├─────────────────────────────────────────────────────────────────┤
+│  • Auto-categorization on memory add                             │
+│  • Hierarchical nesting (up to 3 levels)                         │
+│  • Dynamic summaries per category                                │
+│  • Category decay & merge (bio-inspired)                         │
+│  • Category-aware search boosting                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+
+- **Dynamic Categories** — Auto-discovered from content, not predefined
+- **Hierarchical Structure** — Nested categories (preferences > coding > languages)
+- **Evolving Summaries** — LLM-generated summaries that update with new memories
+- **Category Decay** — Unused categories weaken and merge (bio-inspired, like FadeMem)
+- **Category Embeddings** — Categories have their own vectors for semantic matching
+- **Category-Aware Retrieval** — Boost search results from relevant categories
+
+---
+
+## 💡 Why Dynamic Memory?
+
+Most AI memory systems store everything forever. This causes problems:
+
+```
+Traditional Memory (after 6 months):
+┌────────────────────────────────────────────────┐
+│ 50,000 memories                                │
+│ • Old preferences conflict with new            │
+│ • Token costs explode                          │
+│ • Retrieval precision drops                    │
+│ • "Noise" dominates context                    │
+└────────────────────────────────────────────────┘
+
+Engram (after 6 months):
+┌────────────────────────────────────────────────┐
+│ 5,000 high-quality memories                    │
+│ • Only relevant memories survive               │
+│ • Important things strengthened via access     │
+│ • Fast, precise retrieval                      │
+│ • ~45% storage reduction                       │
+└────────────────────────────────────────────────┘
+```
+
+### Engram Advantages
+
+| Traditional | Engram |
+|-------------|---------|
+| Never forgets | Biologically-inspired decay |
+| Single embedding | Multi-modal encoding (EchoMem) |
+| Static categories | Dynamic hierarchical with decay |
+| Manual summaries | Auto-evolving summaries |
+| Noise accumulates | Adaptive forgetting |
+| Cloud dependency | Local-first, your machine |
+
+### Dynamic Categories
+
+Traditional static hierarchy:
+- Resource Layer → Item Layer → Category Layer (fixed)
+
+Engram's CategoryMem is **dynamic**:
+- Categories **emerge** from content (not predefined)
+- Categories **decay** when unused (bio-inspired)
+- Categories **merge** when too similar
+- Summaries **evolve** with new memories
+- Hierarchy is **flexible** (up to 3 levels)
+
 ---
 
 ## 🚀 Quick Start
@@ -120,14 +204,14 @@ Input: "User prefers TypeScript over JavaScript"
 ### Installation
 
 ```bash
-pip install fadem
+pip install engram
 ```
 
 Or install from source:
 
 ```bash
-git clone https://github.com/yourusername/fademem.git
-cd fademem
+git clone https://github.com/yourusername/engram.git
+cd engram
 pip install -e ".[gemini,qdrant]"
 ```
 
@@ -140,7 +224,7 @@ export GEMINI_API_KEY="your-api-key"
 ### Basic Usage
 
 ```python
-from fadem import Memory
+from engram import Memory
 
 # Initialize with defaults (Gemini + Qdrant)
 memory = Memory()
@@ -167,8 +251,8 @@ print(results["results"][0]["memory"])
 ### With EchoMem Enabled (Default)
 
 ```python
-from fadem import Memory
-from fadem.configs.base import MemoryConfig, EchoMemConfig
+from engram import Memory
+from engram.configs.base import MemoryConfig, EchoMemConfig
 
 config = MemoryConfig(
     echo=EchoMemConfig(
@@ -190,11 +274,38 @@ memory.add("I prefer dark mode", user_id="user_123")
 memory.add("The weather is nice", user_id="user_123")
 ```
 
+### With CategoryMem (New!)
+
+```python
+from engram import Memory
+
+memory = Memory()  # CategoryMem enabled by default
+
+# Add memories - auto-categorized!
+memory.add("I prefer TypeScript over JavaScript", user_id="user_123")
+memory.add("Working on the e-commerce project", user_id="user_123")
+memory.add("Remember to use async/await", user_id="user_123")
+
+# Get category tree
+tree = memory.get_category_tree()
+# → preferences/coding/languages, context/projects, procedures/...
+
+# Get all category summaries
+summaries = memory.get_all_summaries()
+# → {"User Preferences": "User prefers TypeScript...", ...}
+
+# Search within a category
+results = memory.search_by_category("preferences")
+
+# Apply category decay (merges weak categories)
+memory.apply_category_decay()
+```
+
 ---
 
 ## 🔧 Claude Code Integration
 
-FadeMem works as an MCP server for Claude Code, giving Claude persistent memory across sessions.
+Engram works as an MCP server for Claude Code, giving Claude persistent memory across sessions.
 
 ### Setup
 
@@ -203,9 +314,9 @@ Add to your Claude Code config (`~/.claude.json`):
 ```json
 {
   "mcpServers": {
-    "fadem-memory": {
+    "engram-memory": {
       "command": "python",
-      "args": ["-m", "fadem.mcp_server"],
+      "args": ["-m", "engram.mcp_server"],
       "env": {
         "GEMINI_API_KEY": "your-api-key"
       }
@@ -238,7 +349,18 @@ Add to your Claude Code config (`~/.claude.json`):
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    FadeMem + EchoMem                            │
+│                          Engram                                 │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │                   CategoryMem Layer                       │  │
+│  │           (Dynamic Hierarchical Organization)             │  │
+│  │                                                           │  │
+│  │  • Auto-categorization on add                             │  │
+│  │  • Hierarchical nesting (3 levels)                        │  │
+│  │  • Evolving summaries per category                        │  │
+│  │  • Category decay & merge                                 │  │
+│  │  • Category-aware search boosting                         │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                              │                                  │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │                     EchoMem Layer                         │  │
 │  │         (Encoding & Retrieval Enhancement)                │  │
@@ -274,7 +396,7 @@ Add to your Claude Code config (`~/.claude.json`):
 ### Memory Class
 
 ```python
-from fadem import Memory
+from engram import Memory
 
 memory = Memory(config=None)  # Uses defaults if no config
 ```
@@ -334,6 +456,70 @@ stats = memory.get_stats(user_id="user_123")
 # }
 ```
 
+### CategoryMem Methods
+
+#### `get_categories()`
+
+Get all categories.
+
+```python
+categories = memory.get_categories()
+# [{"id": "preferences", "name": "User Preferences", ...}, ...]
+```
+
+#### `get_category_tree()`
+
+Get hierarchical category structure.
+
+```python
+tree = memory.get_category_tree()
+# [{"id": "preferences", "name": "...", "children": [...], "depth": 0}, ...]
+```
+
+#### `get_all_summaries()`
+
+Get summaries for all categories.
+
+```python
+summaries = memory.get_all_summaries()
+# {"User Preferences": "User prefers TypeScript...", "Projects": "..."}
+```
+
+#### `get_category_summary(category_id, regenerate=False)`
+
+Get or regenerate summary for a specific category.
+
+```python
+summary = memory.get_category_summary("preferences", regenerate=True)
+```
+
+#### `search_by_category(category_id, limit=50)`
+
+Get memories in a specific category.
+
+```python
+results = memory.search_by_category("preferences")
+# {"results": [...], "category": {...}, "total": 15}
+```
+
+#### `apply_category_decay()`
+
+Apply decay to categories (merges weak/similar ones).
+
+```python
+result = memory.apply_category_decay()
+# {"decayed": 3, "merged": 1, "deleted": 0}
+```
+
+#### `get_category_stats()`
+
+Get category statistics.
+
+```python
+stats = memory.get_category_stats()
+# {"total_categories": 12, "dynamic_categories": 7, "top_categories": [...]}
+```
+
 ---
 
 ## ⚙️ Configuration
@@ -341,13 +527,14 @@ stats = memory.get_stats(user_id="user_123")
 ### Full Configuration Example
 
 ```python
-from fadem.configs.base import (
+from engram.configs.base import (
     MemoryConfig,
     VectorStoreConfig,
     LLMConfig,
     EmbedderConfig,
     FadeMemConfig,
     EchoMemConfig,
+    CategoryMemConfig,
 )
 
 config = MemoryConfig(
@@ -397,6 +584,19 @@ config = MemoryConfig(
         medium_multiplier=1.3,
         deep_multiplier=1.6,
     ),
+
+    # CategoryMem settings (NEW!)
+    category=CategoryMemConfig(
+        enable_categories=True,
+        auto_categorize=True,
+        use_llm_categorization=True,
+        enable_category_decay=True,
+        category_decay_rate=0.05,
+        merge_weak_categories=True,
+        auto_generate_summaries=True,
+        category_boost_weight=0.15,
+        max_category_depth=3,
+    ),
 )
 
 memory = Memory(config)
@@ -406,7 +606,7 @@ memory = Memory(config)
 
 ## 📚 Research
 
-FadeMem is based on the paper:
+Engram is based on the paper:
 
 > **FadeMem: Biologically-Inspired Forgetting for Efficient Agent Memory**
 >
@@ -422,7 +622,7 @@ FadeMem is based on the paper:
 
 ### Biological Inspiration
 
-FadeMem mimics human memory processes:
+Engram mimics human memory processes:
 
 - **Ebbinghaus Forgetting Curve** → Exponential decay
 - **Spaced Repetition** → Access boosts strength
@@ -443,8 +643,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/fademem.git
-cd fademem
+git clone https://github.com/yourusername/engram.git
+cd engram
 
 # Install dev dependencies
 pip install -e ".[dev]"
@@ -466,7 +666,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 </p>
 
 <p align="center">
-  <a href="https://github.com/yourusername/fademem">GitHub</a> •
-  <a href="https://github.com/yourusername/fademem/issues">Issues</a> •
+  <a href="https://github.com/yourusername/engram">GitHub</a> •
+  <a href="https://github.com/yourusername/engram/issues">Issues</a> •
   <a href="https://twitter.com/yourusername">Twitter</a>
 </p>

@@ -2,7 +2,7 @@
 """
 Example: Using FadeMem with an AI Agent
 
-This shows how to integrate FadeMem as a drop-in replacement for mem0
+This shows how to integrate FadeMem's biologically-inspired memory
 in your AI agent workflow.
 """
 

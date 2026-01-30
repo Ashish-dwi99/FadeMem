@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 
 class MemoryClient:
-    """Thin HTTP client mirroring mem0's MemoryClient interface."""
+    """Thin HTTP client for remote FadeMem server."""
 
     def __init__(
         self,

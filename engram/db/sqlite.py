@@ -68,6 +68,32 @@ class SQLiteManager:
                     storage_before_mb REAL,
                     storage_after_mb REAL
                 );
+
+                -- CategoryMem tables
+                CREATE TABLE IF NOT EXISTS categories (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    category_type TEXT DEFAULT 'dynamic',
+                    parent_id TEXT,
+                    children_ids TEXT DEFAULT '[]',
+                    memory_count INTEGER DEFAULT 0,
+                    total_strength REAL DEFAULT 0.0,
+                    access_count INTEGER DEFAULT 0,
+                    last_accessed TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    embedding TEXT,
+                    keywords TEXT DEFAULT '[]',
+                    summary TEXT,
+                    summary_updated_at TEXT,
+                    related_ids TEXT DEFAULT '[]',
+                    strength REAL DEFAULT 1.0,
+                    FOREIGN KEY (parent_id) REFERENCES categories(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_category_type ON categories(category_type);
+                CREATE INDEX IF NOT EXISTS idx_category_parent ON categories(parent_id);
+                CREATE INDEX IF NOT EXISTS idx_category_strength ON categories(strength DESC);
                 """
             )
 
@@ -283,3 +309,106 @@ class SQLiteManager:
         with self._get_connection() as conn:
             cursor = conn.execute("DELETE FROM memories WHERE tombstone = 1")
             return cursor.rowcount
+
+    # CategoryMem methods
+    def save_category(self, category_data: Dict[str, Any]) -> str:
+        """Save or update a category."""
+        category_id = category_data.get("id")
+        if not category_id:
+            return ""
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO categories (
+                    id, name, description, category_type, parent_id,
+                    children_ids, memory_count, total_strength, access_count,
+                    last_accessed, created_at, embedding, keywords,
+                    summary, summary_updated_at, related_ids, strength
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    category_id,
+                    category_data.get("name", ""),
+                    category_data.get("description", ""),
+                    category_data.get("category_type", "dynamic"),
+                    category_data.get("parent_id"),
+                    json.dumps(category_data.get("children_ids", [])),
+                    category_data.get("memory_count", 0),
+                    category_data.get("total_strength", 0.0),
+                    category_data.get("access_count", 0),
+                    category_data.get("last_accessed"),
+                    category_data.get("created_at"),
+                    json.dumps(category_data.get("embedding")) if category_data.get("embedding") else None,
+                    json.dumps(category_data.get("keywords", [])),
+                    category_data.get("summary"),
+                    category_data.get("summary_updated_at"),
+                    json.dumps(category_data.get("related_ids", [])),
+                    category_data.get("strength", 1.0),
+                ),
+            )
+        return category_id
+
+    def get_category(self, category_id: str) -> Optional[Dict[str, Any]]:
+        """Get a category by ID."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM categories WHERE id = ?",
+                (category_id,)
+            ).fetchone()
+            if row:
+                return self._category_row_to_dict(row)
+        return None
+
+    def get_all_categories(self) -> List[Dict[str, Any]]:
+        """Get all categories."""
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM categories ORDER BY strength DESC"
+            ).fetchall()
+            return [self._category_row_to_dict(row) for row in rows]
+
+    def delete_category(self, category_id: str) -> bool:
+        """Delete a category."""
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+        return True
+
+    def save_all_categories(self, categories: List[Dict[str, Any]]) -> int:
+        """Save multiple categories (batch operation)."""
+        count = 0
+        for cat in categories:
+            self.save_category(cat)
+            count += 1
+        return count
+
+    def _category_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Convert a category row to dict."""
+        data = dict(row)
+        for key in ["children_ids", "keywords", "related_ids"]:
+            if key in data and data[key]:
+                data[key] = json.loads(data[key])
+            else:
+                data[key] = []
+        if data.get("embedding"):
+            data["embedding"] = json.loads(data["embedding"])
+        return data
+
+    def get_memories_by_category(
+        self,
+        category_id: str,
+        limit: int = 100,
+        min_strength: float = 0.0,
+    ) -> List[Dict[str, Any]]:
+        """Get memories belonging to a specific category."""
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM memories
+                WHERE categories LIKE ? AND strength >= ? AND tombstone = 0
+                ORDER BY strength DESC
+                LIMIT ?
+                """,
+                (f'%"{category_id}"%', min_strength, limit),
+            ).fetchall()
+            return [self._row_to_dict(row) for row in rows]

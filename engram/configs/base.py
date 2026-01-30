@@ -50,6 +50,40 @@ class EchoMemConfig(BaseModel):
     use_question_embedding: bool = True
 
 
+class CategoryMemConfig(BaseModel):
+    """
+    Configuration for CategoryMem hierarchical category layer.
+
+    Unlike traditional static approaches, CategoryMem provides:
+    - Dynamic auto-discovered categories
+    - Hierarchical structure with parent/child relationships
+    - Category summaries that evolve with memories
+    - Category decay (unused categories merge/fade)
+    - Category-aware retrieval boosting
+    """
+    enable_categories: bool = True  # Enable category layer
+    auto_categorize: bool = True  # Automatically categorize new memories
+    use_llm_categorization: bool = True  # Use LLM for ambiguous categorization
+
+    # Category decay (bio-inspired, like FadeMem)
+    enable_category_decay: bool = True
+    category_decay_rate: float = 0.05  # Decay rate per cycle
+    merge_weak_categories: bool = True  # Merge weak categories automatically
+    weak_category_threshold: float = 0.3  # Strength below this triggers merge consideration
+
+    # Summary generation
+    auto_generate_summaries: bool = True  # Generate summaries for categories
+    summary_update_threshold: int = 5  # Regenerate summary after N new memories
+
+    # Retrieval boosting
+    category_boost_weight: float = 0.15  # Boost for matching category in search
+    cross_category_boost: float = 0.05  # Boost for related categories
+
+    # Hierarchy
+    max_category_depth: int = 3  # Maximum nesting depth
+    auto_create_subcategories: bool = True  # Allow dynamic subcategory creation
+
+
 class FadeMemConfig(BaseModel):
     enable_forgetting: bool = True
     sml_decay_rate: float = 0.15
@@ -74,10 +108,12 @@ class MemoryConfig(BaseModel):
     )
     collection_name: str = "fadem_memories"
     embedding_model_dims: int = 3072  # gemini-embedding-001 default dimensions
-    version: str = "v1.2"  # Updated for EchoMem
+    version: str = "v1.3"  # Updated for CategoryMem
     custom_fact_extraction_prompt: Optional[str] = None
     custom_conflict_prompt: Optional[str] = None
     custom_fusion_prompt: Optional[str] = None
     custom_echo_prompt: Optional[str] = None
+    custom_category_prompt: Optional[str] = None
     fadem: FadeMemConfig = Field(default_factory=FadeMemConfig)
     echo: EchoMemConfig = Field(default_factory=EchoMemConfig)
+    category: CategoryMemConfig = Field(default_factory=CategoryMemConfig)

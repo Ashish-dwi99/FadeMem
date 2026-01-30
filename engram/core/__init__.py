@@ -3,6 +3,7 @@ from fadem.core.conflict import resolve_conflict
 from fadem.core.echo import EchoProcessor, EchoDepth, EchoResult
 from fadem.core.fusion import fuse_memories
 from fadem.core.retrieval import composite_score
+from fadem.core.category import CategoryProcessor, Category, CategoryMatch, CategoryType
 
 __all__ = [
     "calculate_decayed_strength",
@@ -14,4 +15,8 @@ __all__ = [
     "EchoResult",
     "fuse_memories",
     "composite_score",
+    "CategoryProcessor",
+    "Category",
+    "CategoryMatch",
+    "CategoryType",
 ]

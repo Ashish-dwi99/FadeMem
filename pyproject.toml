@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fadem"
+name = "engram"
 version = "0.1.0"
-description = "FadeMem: Drop-in replacement for mem0 with biologically-inspired forgetting"
+description = "Engram: Biologically-inspired memory layer for AI agents with forgetting, echo encoding, and dynamic categories"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "FadeMem Team"}
+    {name = "Engram Team"}
 ]
-keywords = ["memory", "ai", "agents", "mem0", "forgetting", "llm"]
+keywords = ["memory", "ai", "agents", "forgetting", "llm", "echo", "categories"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -48,11 +48,11 @@ dev = [
 ]
 
 [project.scripts]
-fadem-mcp = "fadem.mcp_server:run"
+engram-mcp = "engram.mcp_server:run"
 
 [project.urls]
-Homepage = "https://github.com/fadem/fadem"
+Homepage = "https://github.com/engram/engram"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["fadem*"]
+include = ["engram*"]

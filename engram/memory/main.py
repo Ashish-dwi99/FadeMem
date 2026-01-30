@@ -12,6 +12,7 @@ from fadem.core.conflict import resolve_conflict
 from fadem.core.echo import EchoProcessor, EchoDepth
 from fadem.core.fusion import fuse_memories
 from fadem.core.retrieval import composite_score
+from fadem.core.category import CategoryProcessor, CategoryMatch
 from fadem.db.sqlite import SQLiteManager
 from fadem.exceptions import FadeMemValidationError
 from fadem.memory.base import MemoryBase
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class Memory(MemoryBase):
-    """FadeMem Memory class - drop-in replacement for mem0.Memory."""
+    """FadeMem Memory class - biologically-inspired memory for AI agents."""
 
     def __init__(self, config: Optional[MemoryConfig] = None):
         self.config = config or MemoryConfig()
@@ -57,6 +58,25 @@ class Memory(MemoryBase):
             )
         else:
             self.echo_processor = None
+
+        # Initialize CategoryMem processor
+        self.category_config = self.config.category
+        if self.category_config.enable_categories:
+            self.category_processor = CategoryProcessor(
+                llm=self.llm,
+                embedder=self.embedder,
+                config={
+                    "use_llm": self.category_config.use_llm_categorization,
+                    "auto_subcategories": self.category_config.auto_create_subcategories,
+                    "max_depth": self.category_config.max_category_depth,
+                },
+            )
+            # Load existing categories from DB
+            existing_categories = self.db.get_all_categories()
+            if existing_categories:
+                self.category_processor.load_categories(existing_categories)
+        else:
+            self.category_processor = None
 
     @classmethod
     def from_config(cls, config_dict: Dict[str, Any]):
@@ -127,6 +147,22 @@ class Memory(MemoryBase):
             mem_metadata.update(mem.get("metadata", {}))
             if app_id:
                 mem_metadata["app_id"] = app_id
+
+            # CategoryMem: Auto-categorize if not provided
+            category_match = None
+            if (
+                self.category_processor
+                and self.category_config.auto_categorize
+                and not mem_categories
+            ):
+                category_match = self.category_processor.detect_category(
+                    content,
+                    metadata=mem_metadata,
+                    use_llm=self.category_config.use_llm_categorization,
+                )
+                mem_categories = [category_match.category_id]
+                mem_metadata["category_confidence"] = category_match.confidence
+                mem_metadata["category_auto"] = True
 
             # EchoMem: Process through multi-modal echo encoding
             echo_result = None
@@ -214,6 +250,13 @@ class Memory(MemoryBase):
             })
             self.vector_store.insert([embedding], payloads=[payload], ids=[memory_id])
 
+            # CategoryMem: Update category stats
+            if self.category_processor and mem_categories:
+                for cat_id in mem_categories:
+                    self.category_processor.update_category_stats(
+                        cat_id, effective_strength, is_addition=True
+                    )
+
             results.append(
                 {
                     "id": memory_id,
@@ -222,8 +265,13 @@ class Memory(MemoryBase):
                     "layer": layer,
                     "strength": effective_strength,
                     "echo_depth": echo_result.echo_depth.value if echo_result else None,
+                    "categories": mem_categories,
                 }
             )
+
+        # Persist categories after batch
+        if self.category_processor:
+            self._persist_categories()
 
         return {"results": results}
 
@@ -242,6 +290,7 @@ class Memory(MemoryBase):
         min_strength: float = 0.1,
         boost_on_access: bool = True,
         use_echo_rerank: bool = True,  # EchoMem: use echo metadata for re-ranking
+        use_category_boost: bool = True,  # CategoryMem: boost by category relevance
         **kwargs: Any,
     ) -> Dict[str, Any]:
         _, effective_filters = build_filters_and_metadata(
@@ -259,6 +308,21 @@ class Memory(MemoryBase):
         # Prepare query terms for echo-based re-ranking
         query_lower = query.lower()
         query_terms = set(query_lower.split())
+
+        # CategoryMem: Detect relevant categories for the query
+        query_category_id = None
+        related_category_ids = set()
+        if self.category_processor and use_category_boost:
+            category_match = self.category_processor.detect_category(
+                query, use_llm=False  # Fast match only for search
+            )
+            if category_match.confidence > 0.4:
+                query_category_id = category_match.category_id
+                related_category_ids = set(
+                    self.category_processor.find_related_categories(query_category_id)
+                )
+                # Record access to category
+                self.category_processor.access_category(query_category_id)
 
         results: List[Dict[str, Any]] = []
         for vr in vector_results:
@@ -288,6 +352,18 @@ class Memory(MemoryBase):
             if use_echo_rerank and self.echo_config.enable_echo:
                 echo_boost = self._calculate_echo_boost(query_lower, query_terms, metadata)
                 combined = combined * (1 + echo_boost)
+
+            # CategoryMem: Apply category-based re-ranking boost
+            category_boost = 0.0
+            memory_categories = set(memory.get("categories", []))
+            if use_category_boost and self.category_processor and query_category_id:
+                if query_category_id in memory_categories:
+                    # Direct category match
+                    category_boost = self.category_config.category_boost_weight
+                elif memory_categories & related_category_ids:
+                    # Related category match
+                    category_boost = self.category_config.cross_category_boost
+                combined = combined * (1 + category_boost)
 
             if boost_on_access:
                 self.db.increment_access(memory["id"])
@@ -321,8 +397,13 @@ class Memory(MemoryBase):
                     "last_accessed": memory.get("last_accessed"),
                     "composite_score": combined,
                     "echo_boost": echo_boost,
+                    "category_boost": category_boost,
                 }
             )
+
+        # Persist category access updates
+        if self.category_processor:
+            self._persist_categories()
 
         results.sort(key=lambda x: x["composite_score"], reverse=True)
         return {"results": results[:limit]}
@@ -671,3 +752,176 @@ class Memory(MemoryBase):
         except Exception:
             return False
         return date.today() > exp_date
+
+    # CategoryMem methods
+    def _persist_categories(self) -> None:
+        """Persist category state to database."""
+        if not self.category_processor:
+            return
+        categories = self.category_processor.get_all_categories()
+        self.db.save_all_categories(categories)
+
+    def get_categories(self) -> List[Dict[str, Any]]:
+        """Get all categories."""
+        if not self.category_processor:
+            return []
+        return self.category_processor.get_all_categories()
+
+    def get_category(self, category_id: str) -> Optional[Dict[str, Any]]:
+        """Get a specific category by ID."""
+        if not self.category_processor:
+            return None
+        cat = self.category_processor.get_category(category_id)
+        return cat.to_dict() if cat else None
+
+    def get_category_summary(self, category_id: str, regenerate: bool = False) -> str:
+        """
+        Get or generate summary for a category.
+
+        Args:
+            category_id: Category ID
+            regenerate: Force regenerate even if cached
+
+        Returns:
+            Summary text
+        """
+        if not self.category_processor:
+            return ""
+
+        cat = self.category_processor.get_category(category_id)
+        if not cat:
+            return "Category not found."
+
+        # Return cached if available and not forcing regenerate
+        if cat.summary and not regenerate:
+            return cat.summary
+
+        # Get memories in this category
+        memories = self.db.get_memories_by_category(category_id, limit=20)
+
+        return self.category_processor.generate_summary(category_id, memories)
+
+    def get_all_summaries(self) -> Dict[str, str]:
+        """
+        Get summaries for all categories with memories.
+
+        Returns category-level summaries with dynamic,
+        evolving content based on stored memories.
+
+        Returns:
+            Dict mapping category name to summary
+        """
+        if not self.category_processor:
+            return {}
+
+        summaries = {}
+        for cat in self.category_processor.categories.values():
+            if cat.memory_count > 0:
+                if not cat.summary:
+                    memories = self.db.get_memories_by_category(cat.id, limit=20)
+                    self.category_processor.generate_summary(cat.id, memories)
+                summaries[cat.name] = cat.summary or f"{cat.memory_count} memories"
+
+        self._persist_categories()
+        return summaries
+
+    def get_category_tree(self) -> List[Dict[str, Any]]:
+        """
+        Get hierarchical category tree.
+
+        Returns:
+            List of root categories with nested children
+        """
+        if not self.category_processor:
+            return []
+
+        def node_to_dict(node) -> Dict[str, Any]:
+            return {
+                "id": node.category.id,
+                "name": node.category.name,
+                "description": node.category.description,
+                "memory_count": node.category.memory_count,
+                "strength": node.category.strength,
+                "depth": node.depth,
+                "children": [node_to_dict(child) for child in node.children],
+            }
+
+        tree_nodes = self.category_processor.get_category_tree()
+        return [node_to_dict(node) for node in tree_nodes]
+
+    def apply_category_decay(self) -> Dict[str, Any]:
+        """
+        Apply decay to categories - bio-inspired like FadeMem.
+
+        Unused categories weaken and may merge with similar ones.
+
+        Returns:
+            Stats about decayed/merged/deleted categories
+        """
+        if not self.category_processor or not self.category_config.enable_category_decay:
+            return {"decayed": 0, "merged": 0, "deleted": 0}
+
+        result = self.category_processor.apply_category_decay(
+            decay_rate=self.category_config.category_decay_rate
+        )
+
+        self._persist_categories()
+        return result
+
+    def get_category_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about the category layer.
+
+        Returns:
+            Category statistics
+        """
+        if not self.category_processor:
+            return {"enabled": False}
+
+        stats = self.category_processor.get_category_stats()
+        stats["enabled"] = True
+        stats["config"] = {
+            "auto_categorize": self.category_config.auto_categorize,
+            "enable_decay": self.category_config.enable_category_decay,
+            "boost_weight": self.category_config.category_boost_weight,
+        }
+        return stats
+
+    def search_by_category(
+        self,
+        category_id: str,
+        limit: int = 50,
+        min_strength: float = 0.1,
+    ) -> Dict[str, Any]:
+        """
+        Get memories in a specific category.
+
+        Args:
+            category_id: Category ID
+            limit: Maximum results
+            min_strength: Minimum memory strength
+
+        Returns:
+            Dict with results list
+        """
+        if not self.category_processor:
+            return {"results": [], "category": None}
+
+        cat = self.category_processor.get_category(category_id)
+        if not cat:
+            return {"results": [], "category": None, "error": "Category not found"}
+
+        # Record access
+        self.category_processor.access_category(category_id)
+
+        memories = self.db.get_memories_by_category(
+            category_id, limit=limit, min_strength=min_strength
+        )
+
+        self._persist_categories()
+
+        return {
+            "results": memories,
+            "category": cat.to_dict(),
+            "total": len(memories),
+        }
